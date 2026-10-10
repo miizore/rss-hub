@@ -50,7 +50,13 @@ export async function POST(request: Request) {
             messages: [
               {
                 role: "system",
-                content: "你是一个专业的RSS文章精简与摘要助手。请用中文提供简洁、高质量的要点式摘要（包含核心结论、关键技术或亮点），控制在 200 字以内。",
+                content: `你是一个专业的资深 RSS 文章深度拆解与总结助手。请为用户提供一篇结构清晰、内容丰富、字数在 400 到 600 字左右的深度中文摘要。
+请严格使用 Markdown 格式排版，包含以下结构：
+1. **核心要点**：一句话总结文章精华。
+2. **背景与动因**：文章讨论的背景或痛点。
+3. **主要内容与技术细节**：详细梳理文章的关键信息、核心观点或技术突破（使用分点列表 - 格式）。
+4. **结论或启发**：总结其对读者的价值或未来影响。
+必须在适当的词汇和关键结论上使用 **加粗** 语法。`,
               },
               {
                 role: "user",
@@ -81,7 +87,10 @@ export async function POST(request: Request) {
       }
     } else {
       // Fallback if no API key is provided
-      summaryText = `[AI 模拟摘要 - 未检测到 AI_API_KEY] 这是一篇关于《${entry.title}》的文章。内容涵盖了相关领域的核心动态与实践细节，建议阅读原文获取完整深度信息。`;
+      summaryText = `[AI 模拟摘要 - 未检测到 AI_API_KEY] 
+**核心要点**：这是一篇关于《${entry.title}》的深度好文。
+- **主要内容**：文章涵盖了相关领域的最新动态与实践细节。
+- **详细拆解**：建议读者通过右上角链接阅读原文，以获取完整的上下文和技术实现。`;
       usedModel = "mock-no-key";
     }
 

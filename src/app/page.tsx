@@ -28,6 +28,19 @@ interface Entry {
   modelUsed?: string;
 }
 
+function renderMarkdown(text: string) {
+  if (!text) return null;
+  const html = text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\*\*(.*?)\*\*/g, '<strong class="text-white font-bold">$1</strong>')
+    .replace(/^- (.*)$/gm, '<li class="ml-4 list-disc my-1">$1</li>')
+    .replace(/^\d+\.\s+(.*)$/gm, '<li class="ml-4 list-decimal my-1">$1</li>')
+    .replace(/\n/g, '<br />');
+  return <div className="space-y-1.5" dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
 export default function Home() {
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -580,9 +593,11 @@ export default function Home() {
                   <div className="absolute top-0 left-0 w-1.5 h-full bg-[#002FA7]"></div>
                   <div className="flex items-center gap-2 mb-2 text-xs font-bold text-[#002FA7] uppercase tracking-wider">
                     <Sparkles className="h-4 w-4 text-[#FF1744]" />
-                    <span>AI 智能精简摘要 ({selectedEntry.modelUsed || "model"})</span>
+                    <span>AI 智能深度摘要 ({selectedEntry.modelUsed || "model"})</span>
                   </div>
-                  <p className="whitespace-pre-line">{selectedEntry.summary}</p>
+                  <div className="text-zinc-200 space-y-2">
+                    {renderMarkdown(selectedEntry.summary)}
+                  </div>
                 </div>
               )}
 
