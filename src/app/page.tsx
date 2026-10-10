@@ -57,7 +57,8 @@ export default function Home() {
       if (json.success) {
         setFeeds(json.data);
       } else {
-        setError(json.error);
+        const err = json.error || "";
+        setError(err.includes("Failed query") || err.includes("connection") ? "数据库连接失败或表未初始化，请在 Vercel 环境变量中配置正确的 DATABASE_URL" : err);
       }
     } catch (err) {
       setError("Failed to load feeds");
@@ -75,7 +76,8 @@ export default function Home() {
       if (json.success) {
         setEntries(json.data);
       } else {
-        setError(json.error);
+        const err = json.error || "";
+        setError(err.includes("Failed query") || err.includes("connection") ? "数据库连接失败或表未初始化，请在 Vercel 环境变量中配置正确的 DATABASE_URL" : err);
       }
     } catch (err) {
       setError("Failed to load entries");
@@ -102,7 +104,8 @@ export default function Home() {
         await fetchFeeds();
         setSelectedFeedId(json.data.id);
       } else {
-        setError(json.error);
+        const err = json.error || "";
+        setError(err.includes("Failed query") || err.includes("connection") ? "数据库连接失败或表未初始化，请在 Vercel 环境变量中配置正确的 DATABASE_URL" : err);
       }
     } catch (err) {
       setError("Failed to add feed");
@@ -148,7 +151,7 @@ export default function Home() {
             <div className="h-8 w-8 rounded bg-[#002FA7] flex items-center justify-center text-white font-bold shadow-lg shadow-[#002FA7]/30">
               <Rss className="h-4 w-4" />
             </div>
-            <span className="font-bold tracking-wider text-lg">KLEIN RSS</span>
+            <span className="font-bold tracking-wider text-lg">KOIRA RSS</span>
           </div>
           <span className="text-xs px-2 py-0.5 rounded bg-red-500/20 text-red-400 font-semibold border border-red-500/30">
             AI v1.0
