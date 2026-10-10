@@ -49,7 +49,7 @@
 
   /* Custom Colors */
   --color-klein-blue: #002FA7;
-  --color-highlight-red: #EF4444;
+  --color-highlight-red: #FF1744; /* Vivid vibrant red */
 }
 
 :root {
@@ -67,7 +67,7 @@
   --muted-foreground: oklch(0.7 0 0);
   --accent: oklch(0.38 0.22 265);
   --accent-foreground: oklch(1 0 0);
-  --destructive: oklch(0.6 0.2 25); /* Red */
+  --destructive: oklch(0.62 0.32 25); /* High saturation bright red */
   --border: oklch(0.2 0 0);
   --input: oklch(0.2 0 0);
   --ring: oklch(0.38 0.22 265);

@@ -6,6 +6,7 @@ export const feeds = pgTable("feeds", {
   url: text("url").notNull().unique(),
   description: text("description"),
   icon: text("icon"),
+  category: varchar("category", { length: 100 }).default("默认分类").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

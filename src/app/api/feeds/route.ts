@@ -20,7 +20,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { url } = body;
+    const { url, category } = body;
 
     if (!url || typeof url !== "string") {
       return NextResponse.json({ success: false, error: "Valid RSS URL is required" }, { status: 400 });
@@ -43,6 +43,7 @@ export async function POST(request: Request) {
         url: url,
         description: parsed.description || null,
         icon: parsed.link ? new URL(parsed.link).origin + "/favicon.ico" : null,
+        category: category || "默认分类",
       })
       .returning();
 
