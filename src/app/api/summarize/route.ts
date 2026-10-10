@@ -28,14 +28,18 @@ export async function POST(request: Request) {
     const textToSummarize = `Title: ${entry.title}\n\nContent:\n${entry.content || "No content available."}`;
 
     const apiKey = process.env.AI_API_KEY;
-    const baseURL = process.env.AI_BASE_URL || "https://api.openai.com/v1";
-    const model = process.env.AI_MODEL || "gpt-4o-mini";
+    const baseURL = process.env.AI_BASE_URL || "https://generativelanguage.googleapis.com/v1beta/openai";
+    const model = process.env.AI_MODEL || "gemini-1.5-flash";
 
     let summaryText = "";
+    let usedModel = model;
 
     if (apiKey) {
       try {
-        const response = await fetch(`${baseURL}/chat/completions`, {
+        const endpoint = `${baseURL.replace(/\/+$/, "")}/chat/completions`;
+        console.log(`Calling AI endpoint: ${endpoint} with model ${model}`);
+
+        const response = await fetch(endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -59,19 +63,26 @@ export async function POST(request: Request) {
 
         if (response.ok) {
           const json = await response.json();
-          summaryText = json.choices?.[0]?.message?.content || "无法生成摘要";
+          summaryText = json.choices?.[0]?.message?.content || json.candidates?.[0]?.content?.parts?.[0]?.text || "无法生成摘要";
         } else {
           const errText = await response.text();
-          console.error("AI API Error:", errText);
-          summaryText = `[AI 摘要调用失败，使用内容摘要]：${entry.content?.slice(0, 150) || entry.title}...`;
+          console.error("AI API Error Response:", errText);
+          return NextResponse.json(
+            { success: false, error: `AI API 调用失败 (${response.status}): ${errText.slice(0, 200)}` },
+            { status: 502 }
+          );
         }
       } catch (aiErr) {
-        console.error("AI Request Failed:", aiErr);
-        summaryText = `[摘要生成异常]：${entry.content?.slice(0, 150) || entry.title}...`;
+        console.error("AI Request Failed Exception:", aiErr);
+        return NextResponse.json(
+          { success: false, error: `AI 请求异常: ${aiErr instanceof Error ? aiErr.message : String(aiErr)}` },
+          { status: 502 }
+        );
       }
     } else {
       // Fallback if no API key is provided
-      summaryText = `[AI 模拟摘要] 这是一篇关于《${entry.title}》的文章。内容涵盖了相关领域的核心动态与实践细节，建议阅读原文获取完整深度信息。`;
+      summaryText = `[AI 模拟摘要 - 未检测到 AI_API_KEY] 这是一篇关于《${entry.title}》的文章。内容涵盖了相关领域的核心动态与实践细节，建议阅读原文获取完整深度信息。`;
+      usedModel = "mock-no-key";
     }
 
     // Save summary
@@ -80,7 +91,7 @@ export async function POST(request: Request) {
       .values({
         entryId: entry.id,
         content: summaryText,
-        modelUsed: apiKey ? model : "mock-fallback",
+        modelUsed: usedModel,
       })
       .returning();
 

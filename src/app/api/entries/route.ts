@@ -15,6 +15,7 @@ export async function GET(request: Request) {
         title: entries.title,
         link: entries.link,
         content: entries.content,
+        thumbnail: entries.thumbnail,
         author: entries.author,
         publishedAt: entries.publishedAt,
         createdAt: entries.createdAt,

@@ -56,6 +56,7 @@ export async function POST(request: Request) {
           title: item.title,
           link: item.link,
           content: item.content || item.contentSnippet || null,
+          thumbnail: item.thumbnail || null,
           author: item.author || null,
           publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
           guid: item.guid || item.link,
@@ -68,6 +69,66 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, data: newFeed }, { status: 201 });
   } catch (error) {
     console.error("Error adding feed:", error);
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : "Internal Server Error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const body = await request.json();
+    const { id, category, name } = body;
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: "Feed ID is required" }, { status: 400 });
+    }
+
+    const updateData: any = {};
+    if (category !== undefined) updateData.category = category;
+    if (name !== undefined) updateData.name = name;
+    updateData.updatedAt = new Date();
+
+    const [updated] = await db
+      .update(feeds)
+      .set(updateData)
+      .where(eq(feeds.id, id))
+      .returning();
+
+    if (!updated) {
+      return NextResponse.json({ success: false, error: "Feed not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, data: updated });
+  } catch (error) {
+    console.error("Error updating feed:", error);
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : "Internal Server Error" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: Request) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json({ success: false, error: "Feed ID is required" }, { status: 400 });
+    }
+
+    // Delete feed (cascade will delete entries and summaries)
+    const [deleted] = await db.delete(feeds).where(eq(feeds.id, id)).returning();
+
+    if (!deleted) {
+      return NextResponse.json({ success: false, error: "Feed not found" }, { status: 404 });
+    }
+
+    return NextResponse.json({ success: true, data: deleted });
+  } catch (error) {
+    console.error("Error deleting feed:", error);
     return NextResponse.json(
       { success: false, error: error instanceof Error ? error.message : "Internal Server Error" },
       { status: 500 }

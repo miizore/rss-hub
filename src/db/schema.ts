@@ -19,6 +19,7 @@ export const entries = pgTable("entries", {
   title: text("title").notNull(),
   link: text("link").notNull().unique(),
   content: text("content"),
+  thumbnail: text("thumbnail"),
   author: varchar("author", { length: 255 }),
   publishedAt: timestamp("published_at"),
   guid: text("guid").unique(),

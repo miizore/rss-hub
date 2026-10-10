@@ -3,9 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Plus, Rss, Sparkles, ExternalLink, RefreshCw, Layers, BookOpen, FolderPlus, ChevronRight, X, ArrowLeft } from "lucide-react";
+import { Plus, Rss, Sparkles, ExternalLink, RefreshCw, Layers, BookOpen, Trash2, Edit3, ChevronRight, ChevronDown, X, ArrowLeft, MoreHorizontal, Folder } from "lucide-react";
 
 interface Feed {
   id: string;
@@ -22,6 +21,7 @@ interface Entry {
   title: string;
   link: string;
   content?: string;
+  thumbnail?: string;
   author?: string;
   publishedAt?: string;
   summary?: string;
@@ -39,15 +39,18 @@ export default function Home() {
   const [loadingEntries, setLoadingEntries] = useState(false);
   const [addingFeed, setAddingFeed] = useState(false);
   const [summarizingId, setSummarizingId] = useState<string | null>(null);
-  const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null); // For Reader View
+  const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
+  const [editingFeed, setEditingFeed] = useState<Feed | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState("");
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
+  const [activeMenuFeedId, setActiveMenuFeedId] = useState<string | null>(null);
+  const [activeMenuCategory, setActiveMenuCategory] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch feeds on mount
   useEffect(() => {
     fetchFeeds();
   }, []);
 
-  // Fetch entries when selectedFeedId or selectedCategory changes
   useEffect(() => {
     fetchEntries(selectedFeedId, selectedCategory);
   }, [selectedFeedId, selectedCategory]);
@@ -82,7 +85,6 @@ export default function Home() {
       if (json.success) {
         let data: Entry[] = json.data;
         if (category && !feedId) {
-          // Filter by category feeds
           const feedIdsInCat = feeds.filter((f) => f.category === category).map((f) => f.id);
           data = data.filter((item) => feedIdsInCat.includes(item.feedId));
         }
@@ -116,8 +118,7 @@ export default function Home() {
         await fetchFeeds();
         setSelectedFeedId(json.data.id);
       } else {
-        const err = json.error || "";
-        setError(err.includes("Failed query") || err.includes("connection") ? "数据库连接失败或表未初始化，请在 Vercel 环境变量中配置正确的 DATABASE_URL" : err);
+        setError(json.error);
       }
     } catch (err) {
       setError("Failed to add feed");
@@ -126,9 +127,75 @@ export default function Home() {
     }
   };
 
+  const handleDeleteFeed = async (feedId: string) => {
+    if (!confirm("确定要删除这个 RSS 订阅源及其所有文章吗？")) return;
+
+    try {
+      const res = await fetch(`/api/feeds?id=${feedId}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (json.success) {
+        if (selectedFeedId === feedId) {
+          setSelectedFeedId(null);
+        }
+        if (selectedEntry?.feedId === feedId) {
+          setSelectedEntry(null);
+        }
+        setActiveMenuFeedId(null);
+        await fetchFeeds();
+      } else {
+        setError(json.error);
+      }
+    } catch (err) {
+      setError("Failed to delete feed");
+    }
+  };
+
+  const handleUpdateFeedCategory = async (feedId: string, newCategory: string) => {
+    if (!newCategory.trim()) return;
+    try {
+      const res = await fetch("/api/feeds", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: feedId, category: newCategory.trim() }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setEditingFeed(null);
+        setActiveMenuFeedId(null);
+        await fetchFeeds();
+      } else {
+        setError(json.error);
+      }
+    } catch (err) {
+      setError("Failed to update feed category");
+    }
+  };
+
+  const handleDeleteCategory = async (categoryName: string) => {
+    if (!confirm(`确定要删除分类 "${categoryName}" 及其包含的所有订阅源吗？`)) return;
+
+    const feedsInCat = feeds.filter((f) => f.category === categoryName);
+    try {
+      for (const feed of feedsInCat) {
+        await fetch(`/api/feeds?id=${feed.id}`, { method: "DELETE" });
+      }
+      if (selectedCategory === categoryName) {
+        setSelectedCategory(null);
+        setSelectedFeedId(null);
+      }
+      setActiveMenuCategory(null);
+      await fetchFeeds();
+    } catch (err) {
+      setError("Failed to delete category");
+    }
+  };
+
   const handleSummarize = async (entryId: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     setSummarizingId(entryId);
+    setError(null);
     try {
       const res = await fetch("/api/summarize", {
         method: "POST",
@@ -157,12 +224,15 @@ export default function Home() {
     }
   };
 
-  // Group feeds by category
+  const toggleCategoryCollapse = (cat: string) => {
+    setCollapsedCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
+  };
+
   const categories = Array.from(new Set(feeds.map((f) => f.category || "默认分类")));
 
   return (
     <div className="flex h-screen bg-black text-white font-sans overflow-hidden">
-      {/* Sidebar: Feeds & Categories Management */}
+      {/* Sidebar */}
       <aside className="w-80 border-r border-zinc-800 flex flex-col bg-zinc-950 shrink-0">
         <div className="p-4 border-b border-zinc-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -227,43 +297,129 @@ export default function Home() {
           <div className="space-y-3">
             {categories.map((cat) => {
               const catFeeds = feeds.filter((f) => (f.category || "默认分类") === cat);
+              const isCollapsed = collapsedCategories[cat];
               return (
                 <div key={cat} className="space-y-1">
-                  <div
-                    onClick={() => {
-                      setSelectedCategory(cat);
-                      setSelectedFeedId(null);
-                    }}
-                    className={`flex items-center justify-between px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded cursor-pointer transition-colors ${
-                      selectedCategory === cat && selectedFeedId === null
-                        ? "text-white bg-zinc-900"
-                        : "text-zinc-500 hover:text-zinc-300"
-                    }`}
-                  >
-                    <span>{cat}</span>
-                    <span className="text-[10px] bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400">
-                      {catFeeds.length}
-                    </span>
-                  </div>
-                  <div className="pl-2 space-y-1 border-l border-zinc-800 ml-2 mt-1">
-                    {catFeeds.map((feed) => (
+                  {/* Category Header */}
+                  <div className="relative group/cat">
+                    <div
+                      onClick={() => toggleCategoryCollapse(cat)}
+                      className="flex items-center justify-between px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded text-zinc-400 bg-zinc-900/60 cursor-pointer hover:text-white transition-colors"
+                    >
+                      <div className="flex items-center gap-1.5 truncate flex-1">
+                        {isCollapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                        <Folder className="h-3.5 w-3.5 text-zinc-500" />
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedCategory(cat);
+                            setSelectedFeedId(null);
+                          }}
+                          className="hover:underline truncate"
+                        >
+                          {cat} ({catFeeds.length})
+                        </span>
+                      </div>
                       <button
-                        key={feed.id}
-                        onClick={() => {
-                          setSelectedFeedId(feed.id);
-                          setSelectedCategory(cat);
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuCategory(activeMenuCategory === cat ? null : cat);
                         }}
-                        className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs font-medium transition-colors text-left truncate ${
-                          selectedFeedId === feed.id
-                            ? "bg-[#002FA7] text-white shadow-md shadow-[#002FA7]/20"
-                            : "text-zinc-400 hover:bg-zinc-900/80 hover:text-white"
-                        }`}
+                        className="text-zinc-500 hover:text-white p-1 rounded transition-colors"
                       >
-                        <BookOpen className="h-3.5 w-3.5 shrink-0" />
-                        <span className="truncate">{feed.name}</span>
+                        <MoreHorizontal className="h-3.5 w-3.5" />
                       </button>
-                    ))}
+                    </div>
+
+                    {/* Category Context Menu */}
+                    {activeMenuCategory === cat && (
+                      <div className="absolute right-2 top-8 z-20 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl py-1 w-32 text-xs">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedCategory(cat);
+                            setSelectedFeedId(null);
+                            setActiveMenuCategory(null);
+                          }}
+                          className="w-full text-left px-3 py-1.5 hover:bg-zinc-800 text-zinc-300"
+                        >
+                          查看分类
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteCategory(cat);
+                          }}
+                          className="w-full text-left px-3 py-1.5 hover:bg-zinc-800 text-[#FF1744]"
+                        >
+                          删除分类
+                        </button>
+                      </div>
+                    )}
                   </div>
+
+                  {/* Feeds in Category */}
+                  {!isCollapsed && (
+                    <div className="pl-2 space-y-1 border-l border-zinc-800 ml-2 mt-1">
+                      {catFeeds.map((feed) => (
+                        <div key={feed.id} className="relative group/feed">
+                          <div
+                            className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium transition-colors ${
+                              selectedFeedId === feed.id
+                                ? "bg-[#002FA7] text-white shadow-md shadow-[#002FA7]/20"
+                                : "text-zinc-400 hover:bg-zinc-900/80 hover:text-white"
+                            }`}
+                          >
+                            <button
+                              onClick={() => {
+                                setSelectedFeedId(feed.id);
+                                setSelectedCategory(cat);
+                              }}
+                              className="flex items-center gap-2 text-left truncate flex-1"
+                            >
+                              <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                              <span className="truncate">{feed.name}</span>
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenuFeedId(activeMenuFeedId === feed.id ? null : feed.id);
+                              }}
+                              className="opacity-0 group-hover/feed:opacity-100 p-1 hover:text-white transition-opacity"
+                            >
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Feed Context Menu */}
+                          {activeMenuFeedId === feed.id && (
+                            <div className="absolute right-2 top-8 z-20 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl py-1 w-36 text-xs">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditingFeed(feed);
+                                  setEditCategoryName(feed.category);
+                                  setActiveMenuFeedId(null);
+                                }}
+                                className="w-full text-left px-3 py-1.5 hover:bg-zinc-800 text-zinc-300 flex items-center gap-2"
+                              >
+                                <Edit3 className="h-3 w-3" /> 移动分类
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteFeed(feed.id);
+                                }}
+                                className="w-full text-left px-3 py-1.5 hover:bg-zinc-800 text-[#FF1744] flex items-center gap-2"
+                              >
+                                <Trash2 className="h-3 w-3" /> 删除订阅
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -278,8 +434,8 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* Main Content Area: Split between Entries List and In-App Reader View */}
-      <main className="flex-1 flex overflow-hidden bg-black">
+      {/* Main Content Area */}
+      <main className="flex-1 flex overflow-hidden bg-black" onClick={() => { setActiveMenuFeedId(null); setActiveMenuCategory(null); }}>
         {/* Left: Entries List */}
         <div className={`flex-1 flex flex-col h-full border-r border-zinc-800 overflow-hidden ${selectedEntry ? "hidden lg:flex lg:w-1/2" : "w-full"}`}>
           <header className="h-16 border-b border-zinc-800 flex items-center justify-between px-6 bg-zinc-950/50 backdrop-blur shrink-0">
@@ -322,23 +478,34 @@ export default function Home() {
                     }`}
                   >
                     <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-1.5 flex-1">
+                      <div className="space-y-1.5 flex-1 min-w-0">
                         <h2 className="text-base font-semibold text-white group-hover:text-[#002FA7] transition-colors line-clamp-2">
                           {entry.title}
                         </h2>
                         <div className="flex items-center gap-3 text-xs text-zinc-400">
-                          {entry.author && <span>{entry.author}</span>}
+                          {entry.author && <span className="truncate max-w-[150px]">{entry.author}</span>}
                           {entry.publishedAt && (
                             <span>{new Date(entry.publishedAt).toLocaleDateString()}</span>
                           )}
                           {entry.summary && (
-                            <span className="text-[#FF1744] font-medium flex items-center gap-1">
+                            <span className="text-[#FF1744] font-medium flex items-center gap-1 shrink-0">
                               <Sparkles className="h-3 w-3" /> 已生成摘要
                             </span>
                           )}
                         </div>
                       </div>
-                      <ChevronRight className="h-5 w-5 text-zinc-600 group-hover:text-[#002FA7] transition-colors shrink-0 mt-1" />
+                      {entry.thumbnail && (
+                        <div className="h-16 w-24 shrink-0 rounded-lg overflow-hidden bg-zinc-950 border border-zinc-800">
+                          <img
+                            src={entry.thumbnail}
+                            alt=""
+                            className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        </div>
+                      )}
+                      {!entry.thumbnail && (
+                        <ChevronRight className="h-5 w-5 text-zinc-600 group-hover:text-[#002FA7] transition-colors shrink-0 mt-1" />
+                      )}
                     </div>
                   </div>
                 ))}
@@ -347,7 +514,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Right: In-App Reader View (Full Article & AI Summary) */}
+        {/* Right: In-App Reader View */}
         {selectedEntry && (
           <div className="flex-1 flex flex-col h-full bg-zinc-950 overflow-hidden w-full lg:w-1/2">
             <header className="h-16 border-b border-zinc-800 flex items-center justify-between px-6 bg-zinc-900/50 backdrop-blur shrink-0">
@@ -437,6 +604,37 @@ export default function Home() {
           </div>
         )}
       </main>
+
+      {/* Edit Feed Category Modal */}
+      {editingFeed && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl">
+            <h3 className="text-lg font-bold text-white">移动订阅源到新分类</h3>
+            <p className="text-xs text-zinc-400">正在为 &quot;{editingFeed.name}&quot; 更换分类：</p>
+            <Input
+              value={editCategoryName}
+              onChange={(e) => setEditCategoryName(e.target.value)}
+              placeholder="输入新分类名称..."
+              className="bg-black border-zinc-700 text-white"
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="ghost"
+                onClick={() => setEditingFeed(null)}
+                className="text-zinc-400 hover:text-white"
+              >
+                取消
+              </Button>
+              <Button
+                onClick={() => handleUpdateFeedCategory(editingFeed.id, editCategoryName)}
+                className="bg-[#002FA7] hover:bg-[#00258a] text-white"
+              >
+                确认移动
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
