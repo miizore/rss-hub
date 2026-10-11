@@ -135,3 +135,43 @@ export async function DELETE(request: Request) {
     );
   }
 }
+
+export async function PUT() {
+  try {
+    const allFeeds = await db.select().from(feeds);
+    let newEntriesCount = 0;
+
+    for (const feed of allFeeds) {
+      try {
+        const parsed = await fetchAndParseFeed(feed.url);
+        const itemsToInsert = parsed.items.slice(0, 50);
+        for (const item of itemsToInsert) {
+          const res = await db.insert(entries).values({
+            feedId: feed.id,
+            title: item.title,
+            link: item.link,
+            content: item.content || item.contentSnippet || null,
+            thumbnail: item.thumbnail || null,
+            author: item.author || null,
+            publishedAt: item.pubDate ? new Date(item.pubDate) : new Date(),
+            guid: item.guid || item.link,
+          }).onConflictDoNothing().returning();
+          if (res.length > 0) {
+            newEntriesCount++;
+          }
+        }
+      } catch (err) {
+        console.error(`Failed to refresh feed ${feed.url}:`, err);
+      }
+    }
+
+    const updatedFeeds = await db.select().from(feeds).orderBy(feeds.createdAt);
+    return NextResponse.json({ success: true, data: updatedFeeds, newEntriesCount });
+  } catch (error) {
+    console.error("Error refreshing feeds:", error);
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : "Internal Server Error" },
+      { status: 500 }
+    );
+  }
+}

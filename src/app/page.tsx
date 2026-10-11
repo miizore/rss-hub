@@ -48,6 +48,10 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [newFeedUrl, setNewFeedUrl] = useState("");
   const [newFeedCategory, setNewFeedCategory] = useState("默认分类");
+  const [isNewCategoryMode, setIsNewCategoryMode] = useState(false);
+  const [customCategoryInput, setCustomCategoryInput] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
   const [loadingFeeds, setLoadingFeeds] = useState(false);
   const [loadingEntries, setLoadingEntries] = useState(false);
   const [addingFeed, setAddingFeed] = useState(false);
@@ -61,7 +65,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchFeeds();
+    handleRefresh(true);
   }, []);
 
   useEffect(() => {
@@ -83,6 +87,33 @@ export default function Home() {
       setError("Failed to load feeds");
     } finally {
       setLoadingFeeds(false);
+    }
+  };
+
+  const handleRefresh = async (isAuto = false) => {
+    if (refreshing) return;
+    setRefreshing(true);
+    setRefreshMessage(isAuto ? "正在自动同步订阅..." : "正在刷新...");
+    try {
+      const res = await fetch("/api/feeds", { method: "PUT" });
+      const json = await res.json();
+      if (json.success) {
+        setFeeds(json.data);
+        await fetchEntries(selectedFeedId, selectedCategory);
+        const count = json.newEntriesCount || 0;
+        setRefreshMessage(count > 0 ? `刷新成功，发现 ${count} 条新文章` : "已是最新");
+        setTimeout(() => setRefreshMessage(null), 3000);
+      } else {
+        setError(json.error);
+        setRefreshMessage("刷新失败");
+        setTimeout(() => setRefreshMessage(null), 3000);
+      }
+    } catch (err) {
+      setError("Failed to refresh feeds");
+      setRefreshMessage("刷新失败");
+      setTimeout(() => setRefreshMessage(null), 3000);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -117,17 +148,24 @@ export default function Home() {
     e.preventDefault();
     if (!newFeedUrl.trim()) return;
 
+    const categoryToUse = isNewCategoryMode ? (customCategoryInput.trim() || "默认分类") : newFeedCategory;
+
     setAddingFeed(true);
     setError(null);
     try {
       const res = await fetch("/api/feeds", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: newFeedUrl.trim(), category: newFeedCategory.trim() || "默认分类" }),
+        body: JSON.stringify({ url: newFeedUrl.trim(), category: categoryToUse }),
       });
       const json = await res.json();
       if (json.success) {
         setNewFeedUrl("");
+        if (isNewCategoryMode) {
+          setNewFeedCategory(categoryToUse);
+          setIsNewCategoryMode(false);
+          setCustomCategoryInput("");
+        }
         await fetchFeeds();
         setSelectedFeedId(json.data.id);
       } else {
@@ -255,7 +293,7 @@ export default function Home() {
             <span className="font-bold tracking-wider text-lg">KOIRA RSS</span>
           </div>
           <span className="text-xs px-2 py-0.5 rounded bg-red-600/30 text-[#FF1744] font-bold border border-[#FF1744]/40 shadow-sm shadow-[#FF1744]/20">
-            AI v1.0
+            v1.1
           </span>
         </div>
 
@@ -269,12 +307,36 @@ export default function Home() {
               className="bg-black border-zinc-700 text-white placeholder:text-zinc-500 focus-visible:ring-[#002FA7]"
             />
             <div className="flex gap-2">
-              <Input
-                placeholder="分类名称 (如: 技术)"
-                value={newFeedCategory}
-                onChange={(e) => setNewFeedCategory(e.target.value)}
-                className="bg-black border-zinc-700 text-white placeholder:text-zinc-500 text-xs h-8 focus-visible:ring-[#002FA7]"
-              />
+              <select
+                value={isNewCategoryMode ? "__new__" : newFeedCategory}
+                onChange={(e) => {
+                  if (e.target.value === "__new__") {
+                    setIsNewCategoryMode(true);
+                  } else {
+                    setIsNewCategoryMode(false);
+                    setNewFeedCategory(e.target.value);
+                  }
+                }}
+                className="bg-black border border-zinc-700 text-white text-xs h-8 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-[#002FA7] flex-1"
+              >
+                {categories.map((cat) => (
+                  <option key={cat} value={cat}>
+                    {cat}
+                  </option>
+                ))}
+                {categories.length === 0 && <option value="默认分类">默认分类</option>}
+                <option value="__new__">+ 新建分类...</option>
+              </select>
+
+              {isNewCategoryMode && (
+                <Input
+                  placeholder="新分类名称"
+                  value={customCategoryInput}
+                  onChange={(e) => setCustomCategoryInput(e.target.value)}
+                  className="bg-black border-zinc-700 text-white placeholder:text-zinc-500 text-xs h-8 focus-visible:ring-[#002FA7] flex-1"
+                />
+              )}
+
               <Button
                 type="submit"
                 disabled={addingFeed}
@@ -440,10 +502,18 @@ export default function Home() {
         </div>
 
         <div className="p-4 border-t border-zinc-800 text-xs text-zinc-500 flex justify-between items-center bg-zinc-950">
-          <span>KOIRA v1.0</span>
-          <button onClick={fetchFeeds} className="hover:text-white transition-colors">
-            <RefreshCw className="h-3.5 w-3.5" />
-          </button>
+          <span>KOIRA v1.1</span>
+          <div className="flex items-center gap-2">
+            {refreshMessage && <span className="text-[10px] text-zinc-400">{refreshMessage}</span>}
+            <button
+              onClick={() => handleRefresh(false)}
+              disabled={refreshing}
+              className="hover:text-white transition-colors p-1 rounded hover:bg-zinc-900"
+              title="刷新订阅源"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin text-[#002FA7]" : ""}`} />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -463,10 +533,6 @@ export default function Home() {
               <p className="text-xs text-zinc-400">
                 点击任意文章可在右侧直接阅读全文与 AI 摘要
               </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <span className="h-2 w-2 rounded-full bg-[#FF1744] animate-pulse"></span>
-              <span className="text-xs text-zinc-400 font-mono">Live Feed</span>
             </div>
           </header>
 
